@@ -1,0 +1,15 @@
+{
+  "id": "dankBitwarden",
+  "name": "Dank Bitwarden",
+  "description": "Search bitwarden entries from rbw.",
+  "version": "1.0.0",
+  "author": "Parthiv Seetharaman",
+  "icon": "encrypted",
+  "type": "launcher",
+  "capabilities": [
+    "password-search"
+  ],
+  "component": "./DankBitwarden.qml",
+  "settings": "./DankBitwardenSettings.qml",
+  "permissions": ["settings_read", "settings_write"]
+}
