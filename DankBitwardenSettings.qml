@@ -27,7 +27,7 @@ PluginSettings {
         id: copyToClipboardToggle
         settingKey: "copyToClipboard"
         label: "Copy Password Instead of Typing"
-        description: value ? "Copies passwords with wl-copy" : "Autotypes username and password with wtype"
+        description: value ? "Copies passwords" : "Autotypes username and password with ydotool"
         defaultValue: false
     }
 
