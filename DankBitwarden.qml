@@ -104,15 +104,20 @@ QtObject {
                 Quickshell.execDetached([
                     "sh",
                     "-c",
-                    "rbw get --field password '" + item._passId + "' | wl-copy"
+                    "rbw get --field password '" + item._passId + "' | tr -d '\\r\\n' | dms cl copy -o"
                 ]);
                 ToastService.showInfo("DankBitwarden", "Copied password for " + item._passName + " to clipboard");
             } else {
-                Quickshell.execDetached([
-                    "sh",
-                    "-c",
-                    "rbw get --field username '" + item._passId + "' | wtype - && " +
-                    "rbw get --field password '" + item._passId + "' | wtype -"
+				Quickshell.execDetached([
+                "sh", "-c",
+                   "dms ipc call spotlight close >/dev/null 2>&1; " +
+                   "sleep 0.15; " +
+                    "app_id=$(niri msg --json focused-window | jq -r '.app_id // empty'); " +
+					"if echo \"$app_id\" | grep -Eqi '(librewolf|firefox|chromium|chrome|brave|vivaldi|zen)'; then " +
+					"  rbw get --field username '" + item._passId + "' | tr -d '\\r\\n' | ydotool type -f -; " +
+                    "  ydotool key 15:1 15:0; " +     // Tab
+                    "fi; " +
+                    "rbw get --field password '" + item._passId + "' | ydotool type -f -"
                 ]);
             }
         }
@@ -120,14 +125,25 @@ QtObject {
 
     function copyItemField(item, field) {
         _prevPass = item._passId;
-        Quickshell.execDetached(["sh", "-c", "rbw get --field '" + field + "' '" + item._passId + "' | dms cl copy -t 'x-kde-passwordManagerHint'"]);
+		Quickshell.execDetached([ "sh", "-c", "rbw get --field '" + field + "' '" + item._passId + "' | tr -d '\\r\\n' | dms cl copy -o" ]);
         ToastService.showInfo("DankBitwarden", "Copied " + field + " of " + item._passName + " to clipboard");
+    }
+
+	function copyItemUsername(item) {
+        _prevPass = item._passId;
+		Quickshell.execDetached([ "sh", "-c", "rbw get --field username '" + item._passId + "' | tr -d '\\r\\n' | dms cl copy" ]);
+        ToastService.showInfo("DankBitwarden", "Copied username of " + item._passName + " to clipboard");
     }
 
     function typeItemField(item, field) {
         _prevPass = item._passId;
-        Quickshell.execDetached(["sh", "-c", "sleep 0.3 && rbw get --field '" + field + "' '" + item._passId + "' | wtype -"]);
-    }
+        Quickshell.execDetached([
+            "sh", "-c",
+            "dms ipc call spotlight close >/dev/null 2>&1; " +
+            "sleep 0.15; " +
+             "rbw get --field '" + field + "' '" + item._passId + "' | tr -d '\\r\\n' | ydotool type -f -"
+        ]);
+	}
 
     function getContextMenuActions(item) {
         if (!item || !item._passId)
@@ -136,7 +152,7 @@ QtObject {
             {
                 icon: "content_copy",
                 text: I18n.tr("Copy Username"),
-                action: () => copyItemField(item, "username")
+                action: () => copyItemUsername(item)
             },
             {
                 icon: "content_copy",
