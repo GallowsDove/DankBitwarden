@@ -25,7 +25,10 @@ QtObject {
         Qt.callLater(loadPasswords);
     }
 
-    function loadPasswords() {
+	function loadPasswords() {
+        if (_loading) return;
+        _loading = true;
+        _pendingLoads = 1;
         const process = passwordsProcessComponent.createObject(root);
         process.running = true;
     }
@@ -33,27 +36,37 @@ QtObject {
     function syncPasswords() {
         const process = syncProcessComponent.createObject(root);
         process.running = true;
+	}
+
+	function normalizeForSearch(s) {
+        const str = (s ?? "").toString().toLowerCase();
+        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     }
 
     function getItems(query) {
-        const lowerQuery = query ? query.toLowerCase().trim() : "";
-        let results = [];
+		const q = normalizeForSearch(query).trim();
+		let results = [];
 
         for (let i = 0; i < _passwords.length; i++) {
-            const pass = _passwords[i];
-            const passLower = pass.name.toLowerCase();
+			const pass = _passwords[i];
 
-            if (lowerQuery.length === 0 || passLower.includes(lowerQuery)) {
+			const name = pass?.name ?? "";
+            const folder = pass?.folder ?? "";
+            const user = pass?.user ?? "";
+
+			const hay = normalizeForSearch((folder ? folder + "/" : "") + name);
+
+            if (q.length === 0 || hay.includes(q)) {
                 results.push({
-                    name: (pass.folder != null ? pass.folder + "/" : "") + pass.name,
+                    name: (folder ? folder + "/" : "") + name,
                     icon: "material:password",
-                    comment: pass.user,
+                    comment: user,
                     action: "type:" + pass.id,
                     categories: ["Dank Bitwarden"],
-                    _passName: pass.name,
+                    _passName: name,
                     _passId: pass.id,
-                    _passUser: pass.user,
-                    _passFolder: pass.folder,
+                    _passUser: user,
+                    _passFolder: folder,
                     _sortKey: pass.id == _prevPass ? 0 : 1 
                 });
             }
@@ -68,7 +81,7 @@ QtObject {
         };
 
         // Sync item should be sorted like any other item once typing starts
-         if (lowerQuery.length !== 0 && "sync".includes(lowerQuery)) {
+         if (q.length !== 0 && "sync".includes(q)) {
             results.push(syncItem);
         }
 
@@ -80,7 +93,7 @@ QtObject {
 
         // If length is zero then add sync item to the beginning
         // so user knows its an option
-        if (lowerQuery.length === 0) {
+        if (q.length === 0) {
             results.unshift(syncItem);
         }
 
@@ -110,7 +123,6 @@ QtObject {
             } else {
 				Quickshell.execDetached([
                 "sh", "-c",
-                   "dms ipc call spotlight close >/dev/null 2>&1; " +
                    "sleep 0.15; " +
                     "app_id=$(niri msg --json focused-window | jq -r '.app_id // empty'); " +
 					"if echo \"$app_id\" | grep -Eqi '(librewolf|firefox|chromium|chrome|brave|vivaldi|zen)'; then " +
@@ -221,7 +233,7 @@ QtObject {
             id: passwordsProcess
 
             running: false
-            command: ["rbw", "list", "--raw", ]
+            command: ["rbw", "list", "--raw"]
 
             stdout: StdioCollector {
                 onStreamFinished: {
