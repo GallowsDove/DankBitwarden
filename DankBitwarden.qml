@@ -17,7 +17,6 @@ QtObject {
     // Data
     property var _passwords: []
     property string _prevPass: ""
-    property var _historyData: []
     
     // Loading State
     property bool _loading: false
@@ -25,10 +24,42 @@ QtObject {
     
     // Detailed Item Cache (for TOTP checks)
     property var _itemDetails: ({}) 
-    property var _itemCheckQueue: []
-    property bool _itemCheckRunning: false
 
     signal itemsChanged
+
+    property RbwClient rbwService: RbwClient {
+        onPasswordsLoaded: data => root.onPasswordsLoaded(data)
+        onPasswordLoadError: code => {
+            console.warn("[DankBitwarden] Failed to load passwords from rbw", "exit:", code);
+            root._pendingLoads--;
+            if (root._pendingLoads <= 0) root._loading = false;
+        }
+        onSyncFinished: code => {
+            if (code === 0) {
+                root.loadPasswords();
+            } else {
+                console.warn("[DankBitwarden] Failed to sync passwords", "exit:", code);
+            }
+        }
+        onDetailsLoaded: (passId, hasTotp, hasHistory) => {
+            let details = { hasTotp: hasTotp, hasHistory: hasHistory };
+            let newDetails = {};
+            for (let k in root._itemDetails) {
+                newDetails[k] = root._itemDetails[k];
+            }
+            newDetails[passId] = details;
+            root._itemDetails = newDetails;
+        }
+        onHistoryReady: (passId, passName, historyData) => {
+             historyWindowComponent.createObject(root, {
+                 passName: passName,
+                 historyData: historyData
+             });
+        }
+        onHistoryError: passId => {
+            ToastService.showInfo("DankBitwarden", "Failed to get history");
+        }
+    }
 
     Component.onCompleted: {
         if (!pluginService)
@@ -49,8 +80,7 @@ QtObject {
         if (_loading) return;
         _loading = true;
         _pendingLoads = 1;
-        const process = passwordsProcessComponent.createObject(root);
-        process.running = true;
+        rbwService.loadPasswords();
     }
 
     function onPasswordsLoaded(data) {
@@ -66,8 +96,7 @@ QtObject {
     }
 
     function syncPasswords() {
-        const process = syncProcessComponent.createObject(root);
-        process.running = true;
+        rbwService.sync();
     }
 
     function normalizeForSearch(s) {
@@ -188,137 +217,9 @@ QtObject {
             "rbw get --field '" + field + "' '" + item._passId + "' | tr -d '\\r\\n' | ydotool type -f -"
         ]);
     }
-
-    function showHistoryFn(item) {
-        historyProcess._passId = item._passId;
-        historyProcess._passName = item._passName;
-        historyProcess._stdoutText = "";
-        historyProcess.exec({
-            command: ["rbw", "history", item._passId]
-        });
-    }
-
+b
     property Component historyWindowComponent: Component {
-        Window {
-            id: historyWin
-            width: 500
-            height: 400
-            title: "Password History: " + historyProcess._passName
-            visible: true
-            color: Theme.background || "#1E1E1E"
-
-            Column {
-                anchors.fill: parent
-                
-                // Header
-                Rectangle {
-                    width: parent.width
-                    height: 50
-                    color: "transparent"
-                    
-                    Text {
-                        anchors.centerIn: parent
-                        text: "History: " + historyProcess._passName
-                        color: Theme.surfaceText
-                        font.pixelSize: Theme.fontSizeLarge
-                        font.bold: true
-                    }
-                    
-                    // Close Button
-                    Rectangle {
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.margins: 10
-                        width: 30
-                        height: 30
-                        radius: 15
-                        color: closeArea.containsMouse ? Theme.surface : "transparent"
-                        
-                        Text {
-                            anchors.centerIn: parent
-                            text: "\ue5cd" // close
-                            font.family: "Material Symbols Rounded"
-                            font.pixelSize: 20
-                            color: Theme.surfaceText
-                        }
-                        
-                        MouseArea {
-                            id: closeArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: historyWin.close()
-                        }
-                    }
-
-                    Rectangle {
-                        anchors.bottom: parent.bottom
-                        width: parent.width
-                        height: 1
-                        color: Theme.surfaceVariantText
-                        opacity: 0.2
-                    }
-                }
-
-                ListView {
-                    width: parent.width
-                    height: parent.height - 50
-                    model: root._historyData
-                    clip: true
-                    
-                    delegate: Rectangle {
-                        width: parent.width
-                        height: 60
-                        color: rowArea.containsMouse ? Theme.surface : "transparent"
-                        
-                        MouseArea {
-                            id: rowArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                Quickshell.execDetached(["sh", "-c", "echo -n '" + modelData.password + "' | dms cl copy -o"]);
-                                ToastService.showInfo("DankBitwarden", "Copied old password");
-                                historyWin.close();
-                            }
-                        }
-
-                        Rectangle {
-                            anchors.bottom: parent.bottom
-                            width: parent.width
-                            height: 1
-                            color: Theme.surfaceVariantText
-                            opacity: 0.2
-                        }
-                        
-                        Row {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            spacing: 10
-                            
-                            // History Info
-                            Column {
-                                width: parent.width - 20 
-                                anchors.verticalCenter: parent.verticalCenter
-                                
-                                Text { 
-                                    text: modelData.date
-                                    color: Theme.surfaceVariantText
-                                    font.pixelSize: Theme.fontSizeSmall
-                                }
-                                Text { 
-                                    text: modelData.password
-                                    color: Theme.surfaceText
-                                    font.pixelSize: 14
-                                    width: parent.width
-                                    elide: Text.ElideRight
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        HistoryWindow {}
     }
 
     // --- Context Menu & Logic ---
@@ -345,8 +246,8 @@ QtObject {
             showTotp = details.hasTotp;
             showHistory = details.hasHistory;
         } else {
-            // Not loaded yet, queue it.
-            Qt.callLater(ensureItemDetails, passId);
+            // Not loaded yet, queue it. Use callLater to avoid binding loop.
+            Qt.callLater(rbwService.ensureItemDetails, passId);
             checkingDetails = true; 
         }
 
@@ -369,7 +270,7 @@ QtObject {
         if (checkingDetails) {
              actions.push({
                 icon: "material:sync",
-                text: I18n.tr("Checking Details..."), // Changed from Checking TOTP
+                text: I18n.tr("Loading..."),
                 action: () => {}
             });
         } else {
@@ -386,7 +287,7 @@ QtObject {
                     text: I18n.tr("Show Password History"),
                     action: () => {
                         Quickshell.execDetached(["sh", "-c", "dms ipc call spotlight close >/dev/null 2>&1"]);
-                        showHistoryFn(item);
+                        rbwService.fetchHistory(item._passId, item._passName);
                     }
                 });
             }
@@ -418,166 +319,4 @@ QtObject {
         return actions;
     }
 
-    // --- Item Details Checking (Queue) ---
-
-    function ensureItemDetails(passId) {
-        if (!passId) return;
-        if (_itemDetails[passId] !== undefined) return;
-        
-        // Prevent duplicate queueing
-        for(let i=0; i<_itemCheckQueue.length; i++) {
-            if (_itemCheckQueue[i] === passId) return;
-        }
-
-        _itemCheckQueue.push(passId);
-        runNextItemCheck();
-    }
-
-    function runNextItemCheck() {
-        if (_itemCheckRunning || _itemCheckQueue.length === 0)
-            return;
-
-        const nextId = _itemCheckQueue.shift();
-        _itemCheckRunning = true;
-        
-        detailsCheckProcess._passId = nextId;
-        detailsCheckProcess._stdoutText = "";
-        
-        // Check both TOTP field and History content
-        detailsCheckProcess.exec({
-            command: [
-                "sh", "-c", 
-                "rbw get --field totp '" + nextId + "' 2>/dev/null || true; " +
-                "echo '___SEP___'; " +
-                "rbw history '" + nextId + "' 2>/dev/null | head -n 1 || true"
-            ]
-        });
-    }
-
-    // --- Processes ---
-
-    property Component syncProcessComponent: Component {
-        Process {
-            id: syncProcess
-            running: false
-            command: ["rbw", "sync"]
-            onExited: exitCode => {
-                if (exitCode === 0) {
-                    loadPasswords();
-                } else {
-                    console.warn("[DankBitwarden] Failed to sync passwords from rbw, make sure it is installed and you are logged in", "exit:", exitCode);
-                }
-                syncProcess.destroy();
-            }
-        }
-    }
-
-    property Component passwordsProcessComponent: Component {
-        Process {
-            id: passwordsProcess
-            running: false
-            command: ["rbw", "list", "--raw"]
-
-            stdout: StdioCollector {
-                onStreamFinished: {
-                    try {
-                        const data = JSON.parse(text);
-                        root.onPasswordsLoaded(data);
-                    } catch (e) {
-                        console.error("[DankBitwarden] Failed to parse passwords:", e);
-                    }
-                    passwordsProcess.destroy();
-                }
-            }
-
-            onExited: exitCode => {
-                if (exitCode !== 0) {
-                    console.warn("[DankBitwarden] Failed to load passwords from rbw, make sure it is installed and you are logged in", "exit:", exitCode);
-                    root._pendingLoads--;
-                    if (root._pendingLoads <= 0)
-                      root._loading = false;
-                    passwordsProcess.destroy();
-                }
-            }
-        }
-    }
-
-    property Process detailsCheckProcess: Process {
-        id: detailsCheckProcess
-        
-        property string _passId: ""
-        property string _stdoutText: ""
-
-        running: false
-        command: []
-
-        stdout: StdioCollector {
-            onStreamFinished: {
-                detailsCheckProcess._stdoutText = text;
-            }
-        }
-
-        onExited: exitCode => {
-            let details = { hasTotp: false, hasHistory: false };
-            
-            const parts = detailsCheckProcess._stdoutText.split("___SEP___");
-            
-            if (parts.length >= 1) {
-                 const totpOut = parts[0].trim();
-                 if (totpOut.length > 0) details.hasTotp = true;
-            }
-            
-            if (parts.length >= 2) {
-                 const histOut = parts[1].trim();
-                 if (histOut.length > 0) details.hasHistory = true;
-            }
-
-            // Force update _itemDetails to trigger any potential bindings
-            let newDetails = {};
-            for (let k in root._itemDetails) {
-                newDetails[k] = root._itemDetails[k];
-            }
-            newDetails[detailsCheckProcess._passId] = details;
-            root._itemDetails = newDetails;
-
-            root._itemCheckRunning = false;
-            root.runNextItemCheck();
-        }
-    }
-
-    property Process historyProcess: Process {
-        id: historyProcess
-        property string _passId: ""
-        property string _passName: ""
-        property string _stdoutText: ""
-        
-        running: false
-        command: []
-        
-        stdout: StdioCollector {
-            onStreamFinished: historyProcess._stdoutText = text
-        }
-        
-        onExited: exitCode => {
-            if (exitCode === 0) {
-                const lines = _stdoutText.split("\n");
-                let parsed = [];
-                for(let i=0; i<lines.length; i++) {
-                    const line = lines[i];
-                    if(!line) continue;
-                    const idx = line.indexOf(": ");
-                    if(idx > -1) {
-                        parsed.push({
-                            date: line.substring(0, idx),
-                            password: line.substring(idx + 2)
-                        });
-                    }
-                }
-                root._historyData = parsed;
-                historyWindowComponent.createObject(root);
-            } else {
-                 ToastService.showInfo("DankBitwarden", "Failed to get history");
-            }
-        }
-    }
 }
