@@ -217,7 +217,7 @@ QtObject {
             "rbw get --field '" + field + "' '" + item._passId + "' | tr -d '\\r\\n' | ydotool type -f -"
         ]);
     }
-b
+
     property Component historyWindowComponent: Component {
         HistoryWindow {}
     }
@@ -257,28 +257,32 @@ b
             actions.push({
                 icon: "content_copy",
                 text: I18n.tr("Copy Username"),
-                action: () => copyItemUsername(item)
+                action: () => copyItemUsername(item),
+                enabled: true
             });
         }
         
         actions.push({
             icon: "content_copy",
             text: I18n.tr("Copy Password"),
-            action: () => copyItemField(item, "password")
+            action: () => copyItemField(item, "password"),
+            enabled: true
         });
 
         if (checkingDetails) {
              actions.push({
                 icon: "material:sync",
                 text: I18n.tr("Loading..."),
-                action: () => {}
+                action: () => {},
+                enabled: false
             });
         } else {
             if (showTotp) {
                 actions.push({
                     icon: "content_copy",
                     text: I18n.tr("Copy TOTP"),
-                    action: () => copyItemField(item, "totp")
+                    action: () => copyItemField(item, "totp"),
+                    enabled: true
                 });
             }
             if (showHistory) {
@@ -288,7 +292,8 @@ b
                     action: () => {
                         Quickshell.execDetached(["sh", "-c", "dms ipc call spotlight close >/dev/null 2>&1"]);
                         rbwService.fetchHistory(item._passId, item._passName);
-                    }
+                    },
+                    enabled: true
                 });
             }
         }
@@ -298,21 +303,24 @@ b
             actions.push({
                 icon: "keyboard",
                 text: I18n.tr("Type Username"),
-                action: () => typeItemField(item, "username")
+                action: () => typeItemField(item, "username"),
+                enabled: true
             });
         }
 
         actions.push({
             icon: "keyboard",
             text: I18n.tr("Type Password"),
-            action: () => typeItemField(item, "password")
+            action: () => typeItemField(item, "password"),
+            enabled: true
         });
 
         if (showTotp) {
             actions.push({
                 icon: "keyboard",
                 text: I18n.tr("Type TOTP"),
-                action: () => typeItemField(item, "totp")
+                action: () => typeItemField(item, "totp"),
+                enabled: true
             });
         }
 

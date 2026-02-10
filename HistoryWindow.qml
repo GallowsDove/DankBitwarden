@@ -16,6 +16,8 @@ Window {
     visible: true
     color: Theme.background || "#1E1E1E"
 
+    onClosing: historyWin.destroy()
+
     Column {
         anchors.fill: parent
         
@@ -86,7 +88,7 @@ Window {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        Quickshell.execDetached(["sh", "-c", "echo -n '" + modelData.password + "' | dms cl copy -o"]);
+                        Quickshell.execDetached(["sh", "-c", "echo -n '" + modelData.password.replace(/'/g, "'\\''") + "' | dms cl copy -o"]);
                         ToastService.showInfo("DankBitwarden", "Copied old password");
                         historyWin.close();
                     }
